@@ -2,12 +2,26 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
 
-interface OpTcgCard {
-  id: string;
-  name: { en?: string; jp?: string };
-  images?: { en?: string; jp?: string };
-  rarity?: string;
-  type?: string;
+interface OptcgApiCard {
+  inventory_price: number;
+  market_price: number;
+  card_name: string;
+  set_name: string;
+  card_text: string;
+  set_id: string;
+  rarity: string;
+  card_set_id: string;
+  card_color: string;
+  card_type: string;
+  life: number | null;
+  card_cost: string;
+  card_power: string;
+  sub_types: string;
+  counter_amount: number;
+  attribute: string;
+  date_scraped: string;
+  card_image_id: string;
+  card_image: string;
 }
 
 @Injectable()
@@ -28,15 +42,14 @@ export class SeedService implements OnApplicationBootstrap {
       return;
     }
 
-    this.logger.log('DB is empty — seeding cards from One Piece TCG API...');
+    this.logger.log('DB is empty — seeding 10 cards from OPTCG API...');
     await this.fetchAndSeedCards();
   }
 
   async fetchAndSeedCards() {
     try {
-      // Fetch all cards from the unofficial OP TCG API
-      const { data } = await axios.get<OpTcgCard[]>(
-        'https://apiv2.api.onepiece-cardgame.com/opcg/card',
+      const { data } = await axios.get<OptcgApiCard[]>(
+        'https://www.optcgapi.com/api/allSetCards/',
         { timeout: 30000 },
       );
 
@@ -45,40 +58,39 @@ export class SeedService implements OnApplicationBootstrap {
         return;
       }
 
-      // Map API response to our schema
-      const cards = data
-        .map((card) => ({
-          name: card.name?.en || card.name?.jp || null,
-          setCode: card.id || null,        // e.g. "OP01-060"
-          imageUrl: card.images?.en || card.images?.jp || null,
-          rarity: card.rarity || null,
-          cardType: card.type || null,
-        }))
-        .filter((c) => c.name !== null);  // skip cards with no name
+      // LIMIT TO 10 FOR TESTING
+      const limitedData = data.slice(0, 10);
 
-      // Batch insert in chunks of 100 to avoid DB limits
+      const cards = limitedData.map((card) => ({
+        name: card.card_name,
+        setCode: card.card_set_id || card.set_id,
+        imageUrl: card.card_image,
+        rarity: card.rarity,
+        cardType: card.card_type,
+      }));
+
       const chunkSize = 100;
       let seeded = 0;
 
       for (let i = 0; i < cards.length; i += chunkSize) {
         const chunk = cards.slice(i, i + chunkSize);
+
         await this.prisma.card.createMany({
           data: chunk as any,
           skipDuplicates: true,
         });
+
         seeded += chunk.length;
         this.logger.log(`Seeded ${seeded}/${cards.length} cards...`);
       }
 
-      this.logger.log(`✅ Seed complete — ${seeded} cards saved.`);
+      this.logger.log(`✅ TEST SEED COMPLETE — ${seeded} cards saved.`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Seed failed: ${message}`);
-      // App continues even if seed fails — not fatal
     }
   }
 
-  // Call this to force a reseed (e.g. new card set released)
   async forceReseed() {
     this.logger.log('Force reseeding all cards...');
     await this.fetchAndSeedCards();
