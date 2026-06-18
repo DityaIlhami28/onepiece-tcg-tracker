@@ -86,7 +86,7 @@ export class CardsController {
     return this.scraperService.scrapeCard(card.name);
   }
 
-  // POST /admin/reseed — force reseed from OP TCG API
+//   POST /admin/reseed — force reseed from OP TCG API
   @Post('admin/reseed')
   async reseed() {
     await this.seedService.forceReseed();
